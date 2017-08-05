@@ -73,7 +73,7 @@ func (h *handler) resolveInternal(r *dns.Msg) (*dns.Msg, error) {
 	qname := r.Question[0].Name
 	redis := h.server.RedisClient
 
-	qnameKey := internal.GetRedisKey(internal.GetRedisDomainKey(qname))
+	qnameKey := internal.GetRedisDomainKey(qname)
 
 	ttl, err := redis.TTL(qnameKey).Result()
 	if err != nil {
@@ -116,9 +116,9 @@ func (h *handler) resolveInternal(r *dns.Msg) (*dns.Msg, error) {
 
 	ipStr := ip.String()
 
-	qnameIpKey := internal.GetRedisKey(internal.GetRedisIpKey(ipStr))
+	qnameIpKey := internal.GetRedisIpKey(ipStr)
 
-	success, err := redis.SetNX(qnameIpKey, qname, DEFAULT_TTL).Result()
+	success, err := redis.SetNX(qnameIpKey, strings.TrimSuffix(qname, "."), DEFAULT_TTL).Result()
 	if err != nil {
 		return nil, err
 	}
