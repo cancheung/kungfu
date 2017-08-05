@@ -51,8 +51,8 @@ func (g *Gateway) Serve() {
 
 	g.nat = newNat()
 
-	go g.relayServe()
 	g.tunUp()
+	go g.relayServe()
 	go g.handleRequest()
 
 	g.subscribe()
