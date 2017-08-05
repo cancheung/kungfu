@@ -1,7 +1,10 @@
 package gateway
 
 import (
+	"github.com/yinheli/kungfu/internal"
 	"net"
+	"runtime"
+	"sync/atomic"
 	"testing"
 )
 
@@ -49,4 +52,35 @@ func TestNat(t *testing.T) {
 	if s.dstPort != dstPort {
 		t.Fatal("session dstPort should equal")
 	}
+}
+
+func BenchmarkNat(b *testing.B) {
+	runtime.GOMAXPROCS(10)
+
+	n := newNat()
+
+	minIp, maxIp, _ := internal.ParseNetwork("10.0.0.1/16")
+
+	var ipIdx uint32 = 0
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			ipx := atomic.AddUint32(&ipIdx, 1)
+			_, port := n.newSession(
+				internal.IntToIpv4((minIp+ipx)%maxIp),
+				8080,
+				internal.IntToIpv4((minIp+ipx)%maxIp),
+				5000,
+			)
+
+			if port <= 0 {
+				b.Fatal("new session fail")
+				return
+			}
+
+			n.getSession(port)
+		}
+	})
+
+	b.Logf("session count: %d", len(n.sessions))
 }

@@ -58,6 +58,9 @@ func (n *nat) newSession(srcIp net.IP, srcPort uint16, dstIp net.IP, dstPort uin
 	now := time.Now().Unix()
 	n.triggerClearUpSession(now)
 
+	natLock.Lock()
+	defer natLock.Unlock()
+
 	addrInt := addrToInt(srcIp, srcPort)
 	if port, ok := n.portMap[addrInt]; ok {
 		return false, port
@@ -68,9 +71,6 @@ func (n *nat) newSession(srcIp net.IP, srcPort uint16, dstIp net.IP, dstPort uin
 	if newPort < 0 {
 		return false, newPort
 	}
-
-	natLock.Lock()
-	defer natLock.Unlock()
 
 	n.sessions[newPort] = &natSession{
 		srcIp:   srcIp,
