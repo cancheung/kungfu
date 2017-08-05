@@ -1,0 +1,13 @@
+package: github.com/yinheli/kungfu
+import:
+- package: github.com/astaxie/beego
+- package: github.com/miekg/dns
+- package: github.com/go-redis/redis
+  version: v6.5.4
+- package: github.com/op/go-logging
+  version: v1
+- package: gopkg.in/yaml.v2
+- package: github.com/songgao/water
+- package: golang.org/x/net
+  subpackages:
+  - proxy

@@ -1,0 +1,40 @@
+hash: c9ee18b5fb11bc2e25224f5f8dba234c13033469e1532112a779c139c061f24b
+updated: 2017-08-04T16:13:15.19879319Z
+imports:
+- name: github.com/astaxie/beego
+  version: d96289a81bf67728cff7a19b067aaecc65a62ec6
+  subpackages:
+  - config
+  - context
+  - context/param
+  - grace
+  - logs
+  - session
+  - toolbox
+  - utils
+- name: github.com/go-redis/redis
+  version: a005081ecd2d0d963a1a20efda049223205cf90a
+  subpackages:
+  - internal
+  - internal/consistenthash
+  - internal/hashtag
+  - internal/pool
+  - internal/proto
+- name: github.com/miekg/dns
+  version: 0f3adef2e2201d72e50309a36fc99d8a9d1a4960
+- name: github.com/op/go-logging
+  version: b2cb9fa56473e98db8caba80237377e83fe44db5
+- name: github.com/songgao/water
+  version: 99d07fc117afd4d997bc5ebca77c241644ffe24a
+- name: golang.org/x/net
+  version: f5079bd7f6f74e23c4d65efa0f4ce14cbd6a3c0f
+  subpackages:
+  - proxy
+- name: golang.org/x/sys
+  version: d8f5ea21b9295e315e612b4bcf4bedea93454d4d
+  subpackages:
+  - windows
+  - windows/registry
+- name: gopkg.in/yaml.v2
+  version: 25c4ec802a7d637f88d584ab26798e94ad14c13b
+testImports: []
