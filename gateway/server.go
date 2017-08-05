@@ -30,14 +30,15 @@ var (
 type Gateway struct {
 	RedisClient *redis.Client
 
-	network     string
-	proxy       *url.URL
-	dialer      proxy.Dialer
-	relayIp     net.IP
-	relayPort   uint16
-	nat         *nat
-	ifce        *water.Interface
-	relayServer *net.TCPListener
+	network        string
+	proxy          *url.URL
+	dialer         proxy.Dialer
+	relayIp        net.IP
+	relayPort      uint16
+	nat            *nat
+	ifce           *water.Interface
+	relayTCPServer *net.TCPListener
+	relayUDPServer *net.UDPConn
 }
 
 func (g *Gateway) Serve() {
@@ -50,7 +51,8 @@ func (g *Gateway) Serve() {
 	g.nat = newNat()
 
 	g.tunUp()
-	go g.relayServe()
+	go g.relayTCPServe()
+	go g.relayUDPServe()
 	go g.handleRequest()
 
 	g.subscribe()
@@ -111,35 +113,6 @@ func (g *Gateway) loadConfig() (err error) {
 	return
 }
 
-func (g *Gateway) relayServe() {
-
-	addr := &net.TCPAddr{IP: g.relayIp, Port: int(g.relayPort)}
-	ln, err := net.ListenTCP("tcp4", addr)
-	if err != nil {
-		log.Error("start relay server on port %d fail, %v", g.relayPort, err)
-		return
-	}
-
-	log.Info("relay server listen on %d", g.relayPort)
-
-	g.relayServer = ln
-
-	for {
-		if g.relayServer == nil {
-			break
-		}
-
-		conn, err := g.relayServer.AcceptTCP()
-		if err != nil {
-			log.Error("relay server accept request error, %v", err)
-			time.Sleep(time.Second * 3)
-			continue
-		}
-
-		go g.handleRelayConn(conn)
-	}
-}
-
 func (g *Gateway) tunUp() {
 	config := water.Config{
 		DeviceType: water.TUN,
@@ -155,6 +128,65 @@ func (g *Gateway) tunUp() {
 	g.ifce = ifce
 
 	g.configTun()
+}
+
+func (g *Gateway) relayTCPServe() {
+
+	addr := &net.TCPAddr{IP: g.relayIp, Port: int(g.relayPort)}
+	ln, err := net.ListenTCP("tcp4", addr)
+	if err != nil {
+		log.Error("start tcp relay server on port %d fail, %v", g.relayPort, err)
+		return
+	}
+
+	log.Info("relay server listen on %d", g.relayPort)
+
+	g.relayTCPServer = ln
+
+	for {
+		if g.relayTCPServer == nil {
+			break
+		}
+
+		conn, err := g.relayTCPServer.AcceptTCP()
+		if err != nil {
+			log.Error("relay server accept request error, %v", err)
+			time.Sleep(time.Second * 3)
+			continue
+		}
+
+		go g.handleTCPRelayConn(conn)
+	}
+}
+
+func (g *Gateway) relayUDPServe() {
+	addr := &net.UDPAddr{IP: g.relayIp, Port: int(g.relayPort)}
+	ln, err := net.ListenUDP("udp4", addr)
+	if err != nil {
+		log.Error("start udp relay server on port %d fail, %v", g.relayPort, err)
+		return
+	}
+
+	log.Info("relay server listen on %d", g.relayPort)
+
+	g.relayUDPServer = ln
+
+	for {
+		if g.relayUDPServer == nil {
+			break
+		}
+
+		buf := make([]byte, mtu)
+
+		n, clientAddr, err := g.relayUDPServer.ReadFromUDP(buf)
+		if err != nil {
+			log.Error("relay udp server receive data error, %v", err)
+			time.Sleep(time.Second * 3)
+			continue
+		}
+
+		go g.handleUDPRelay(clientAddr, buf[:n])
+	}
 }
 
 func (g *Gateway) configTun() {
@@ -194,8 +226,7 @@ func (g *Gateway) handleRequest() {
 		} else if protocol == icmp {
 			g.handleICMP(&p)
 		} else if protocol == udp {
-			log.Debug("protocol udp not supported, source %v -> dest %v", p.sourceIP(), p.destinationIP())
-			continue
+			g.handleUDP(&p)
 		}
 	}
 }
@@ -266,7 +297,53 @@ func (g *Gateway) handleICMP(p *ipv4Packet) {
 	}
 }
 
-func (g *Gateway) handleRelayConn(conn *net.TCPConn) {
+func (g *Gateway) handleUDP(p *ipv4Packet) {
+	up := udpPacket(p.payload())
+
+	srcIp := p.sourceIP()
+	dstIp := p.destinationIP()
+
+	srcPort := up.sourcePort()
+	dstPort := up.destinationPort()
+
+	if srcPort == g.relayPort && g.relayIp.Equal(srcIp) {
+		session := g.nat.getSession(dstPort)
+		if session == nil {
+			log.Warning("nat session not found, %v:%d -> %v:%d", srcIp, srcPort, dstIp, dstPort)
+			return
+		}
+
+		p.setSourceIP(session.dstIp)
+		p.setDestinationIP(session.srcIp)
+		up.setSourcePort(session.dstPort)
+		up.setDestinationPort(session.srcPort)
+
+	} else {
+		isNew, port := g.nat.newSession(srcIp, srcPort, dstIp, dstPort)
+		if port <= 0 {
+			log.Warning("create nat session fail,  %v:%d -> %v:%d", srcIp, srcPort, dstIp, dstPort)
+			return
+		}
+
+		if isNew {
+			if log.IsEnabledFor(logging.DEBUG) {
+				log.Debug("udp %v:%d -> %v:%d, relay: %d", srcIp, srcPort, dstIp, dstPort, port)
+			}
+		}
+
+		p.setSourceIP(dstIp)
+		p.setDestinationIP(g.relayIp)
+		up.setSourcePort(port)
+		up.setDestinationPort(g.relayPort)
+	}
+
+	up.resetChecksum(p.pseudoSum())
+	p.resetChecksum()
+
+	g.ifce.Write(*p)
+}
+
+func (g *Gateway) handleTCPRelayConn(conn *net.TCPConn) {
 	defer func() {
 		if x := recover(); x != nil {
 			log.Error("handle relay conn exception, %v", x)
@@ -322,6 +399,38 @@ func (g *Gateway) handleRelayConn(conn *net.TCPConn) {
 		uploadBytes, downloadBytes)
 }
 
+// TODO finish tunnel
+func (g *Gateway) handleUDPRelay(clientAddr *net.UDPAddr, packet []byte) {
+	defer func() {
+		if x := recover(); x != nil {
+			log.Error("handle udp relay exception, %v", x)
+		}
+	}()
+
+	port := uint16(clientAddr.Port)
+	session := g.nat.getSession(port)
+	if session == nil {
+		return
+	}
+
+	key := internal.GetRedisIpKey(session.dstIp.String())
+	host, err := g.RedisClient.Get(key).Result()
+	if err != nil {
+		log.Warning("get redis domain fail %s", key)
+		return
+	}
+
+	target := fmt.Sprintf("%s:%d", host, session.dstPort)
+	conn, err := net.Dial("udp4", target)
+	if err != nil {
+		log.Warning("dial %s error %v", target, err)
+		return
+	}
+	defer conn.Close()
+
+	conn.Write(packet)
+}
+
 func (g *Gateway) subscribe() {
 	channels := []string{
 		internal.GetRedisNetworkChannelKey(),
@@ -341,15 +450,20 @@ func (g *Gateway) subscribe() {
 		if err := g.loadConfig(); err != nil {
 			log.Error("reload gateway config fail")
 		} else {
-			log.Debug("restart relay server")
+			log.Debug("shutdown relay server")
 			// restart the server
-			g.relayServer.Close()
-			g.relayServer = nil
-			time.Sleep(time.Second * 8)
-			go g.relayServe()
+			g.relayTCPServer.Close()
+			g.relayTCPServer = nil
+			g.relayUDPServer.Close()
+			g.relayUDPServer = nil
+			time.Sleep(time.Second * 5)
 
 			log.Debug("re-config tun ifce")
 			g.configTun()
+
+			log.Debug("start relay server")
+			go g.relayTCPServe()
+			go g.relayUDPServe()
 		}
 	}
 }
