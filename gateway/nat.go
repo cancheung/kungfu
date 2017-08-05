@@ -15,7 +15,7 @@ const (
 )
 
 var (
-	natLock      sync.Mutex
+	natLock      sync.RWMutex
 	localAddr, _ = net.ResolveTCPAddr("tcp", "localhost:0")
 )
 
@@ -44,6 +44,9 @@ func newNat() *nat {
 }
 
 func (n *nat) getSession(port uint16) *natSession {
+	natLock.RLock()
+	defer natLock.RUnlock()
+
 	s := n.sessions[port]
 	if s != nil {
 		s.touch = time.Now().Unix()
