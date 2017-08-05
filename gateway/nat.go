@@ -15,8 +15,8 @@ const (
 )
 
 var (
-	natClearUpLock sync.Mutex
-	localAddr, _   = net.ResolveTCPAddr("tcp", "localhost:0")
+	natLock      sync.Mutex
+	localAddr, _ = net.ResolveTCPAddr("tcp", "localhost:0")
 )
 
 type nat struct {
@@ -66,6 +66,9 @@ func (n *nat) newSession(srcIp net.IP, srcPort uint16, dstIp net.IP, dstPort uin
 		return false, newPort
 	}
 
+	natLock.Lock()
+	defer natLock.Unlock()
+
 	n.sessions[newPort] = &natSession{
 		srcIp:   srcIp,
 		dstIp:   dstIp,
@@ -96,8 +99,8 @@ func (n *nat) triggerClearUpSession(now int64) {
 
 	// do clear up
 	go func() {
-		natClearUpLock.Lock()
-		defer natClearUpLock.Unlock()
+		natLock.Lock()
+		defer natLock.Unlock()
 
 		if !n.isReadyClearUp(now) {
 			return
