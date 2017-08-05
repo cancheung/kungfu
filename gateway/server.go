@@ -211,7 +211,7 @@ func (g *Gateway) handleTCP(p *ipv4Packet) {
 	srcPort := tp.sourcePort()
 	dstPort := tp.destinationPort()
 
-	if g.relayIp.Equal(srcIp) && srcPort == g.relayPort {
+	if srcPort == g.relayPort && g.relayIp.Equal(srcIp) {
 		session := g.nat.getSession(dstPort)
 		if session == nil {
 			log.Warning("nat session not found, %v:%d -> %v:%d", srcIp, srcPort, dstIp, dstPort)
