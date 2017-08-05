@@ -294,7 +294,7 @@ func (g *Gateway) handleRelayConn(conn *net.TCPConn) {
 		return
 	}
 
-	key := internal.GetRedisKey(internal.GetRedisIpKey(session.dstIp.String()))
+	key := internal.GetRedisIpKey(session.dstIp.String())
 	host, err := g.RedisClient.Get(key).Result()
 	if err != nil {
 		log.Warning("get redis domain fail %s", key)
