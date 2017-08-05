@@ -10,7 +10,7 @@
 /dns/server/kungfu-dns-server
 
 /gateway/server/server
-/dns/server/config.yml
+/gateway/server/config.yml
 /gateway/server/kungu-gateway-server
 
 /ui/server/server
