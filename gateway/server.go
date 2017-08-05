@@ -25,8 +25,6 @@ const (
 
 var (
 	log = kungfu.GetLog()
-
-	relayServerShutdownSignal chan bool
 )
 
 type Gateway struct {
