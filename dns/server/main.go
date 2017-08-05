@@ -7,6 +7,7 @@ import (
 	"github.com/yinheli/kungfu/dns"
 	"github.com/yinheli/kungfu/internal"
 	"os"
+	"runtime"
 )
 
 var (
@@ -43,6 +44,8 @@ func main() {
 	if *d {
 		kungfu.SetLogLevelDebug()
 	}
+
+	runtime.GOMAXPROCS(runtime.NumCPU() * 2)
 
 	log.Info("kungfu dns server version: %s", ver)
 	log.Info(kungfu.DECLARATION)
