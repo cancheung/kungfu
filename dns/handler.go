@@ -150,7 +150,7 @@ func (h *handler) resolveInternal(r *dns.Msg) (*dns.Msg, error) {
 func (h *handler) resolveInternalPTR(r *dns.Msg) (*dns.Msg, error) {
 	qname := r.Question[0].Name
 
-	if _, ok := h.server.localArpa[qname]; ok {
+	if h.server.arpaContains(&qname) {
 		msg := new(dns.Msg)
 		msg.SetReply(r)
 		ptr := new(dns.PTR)

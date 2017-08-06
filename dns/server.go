@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -19,10 +20,11 @@ var (
 type Server struct {
 	RedisClient *redis.Client
 
-	minIp     uint32
-	maxIp     uint32
-	localArpa map[string]bool
-	handler   *handler
+	minIp         uint32
+	maxIp         uint32
+	localArpaLock sync.RWMutex
+	localArpa     map[string]bool
+	handler       *handler
 }
 
 func (server *Server) Start() {
@@ -121,6 +123,9 @@ func (server *Server) Start() {
 func (server *Server) initLocalArpa() {
 	server.localArpa = make(map[string]bool)
 
+	server.localArpaLock.Lock()
+	defer server.localArpaLock.Unlock()
+
 	addr, err := net.InterfaceAddrs()
 	if err != nil {
 		log.Error("get local interface addr error, %v", err)
@@ -141,6 +146,13 @@ func (server *Server) initLocalArpa() {
 
 		server.localArpa[arpa] = true
 	}
+}
+
+func (server *Server) arpaContains(qname *string) bool {
+	server.localArpaLock.RLock()
+	defer server.localArpaLock.RUnlock()
+	_, ok := server.localArpa[*qname]
+	return ok
 }
 
 func (server *Server) subscribe() {
@@ -176,6 +188,8 @@ func (server *Server) subscribe() {
 		ip, _, _ := net.ParseCIDR(network)
 		arpa, _ := dns.ReverseAddr(ip.String())
 
+		server.localArpaLock.Lock()
 		server.localArpa[arpa] = true
+		server.localArpaLock.Unlock()
 	}
 }
