@@ -87,6 +87,10 @@ func GetRedisIpKey(ip string) string {
 	return GetRedisKey(fmt.Sprintf("cache:ip-%s", ip))
 }
 
+func GetRedisRealIpKey(ip string) string {
+	return GetRedisKey(fmt.Sprintf("cache:ip-real-%s", ip))
+}
+
 func GetRedisProxyKey() string {
 	return GetRedisKey("proxy")
 }

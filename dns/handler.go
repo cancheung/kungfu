@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-const DEFAULT_TTL = time.Duration(time.Hour * 24 * 7)
+const DEFAULT_TTL = time.Duration(time.Hour * 3)
 const DNS_SERVER_NAME = "kungfu-dns-server-helps-you-automatic-climb-the-wall."
 
 type handler struct {

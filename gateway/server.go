@@ -1,8 +1,10 @@
 package gateway
 
 import (
+	"errors"
 	"fmt"
 	"github.com/go-redis/redis"
+	"github.com/miekg/dns"
 	"github.com/op/go-logging"
 	"github.com/songgao/water"
 	"github.com/yinheli/kungfu"
@@ -15,6 +17,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -25,6 +28,8 @@ const (
 
 var (
 	log = kungfu.GetLog()
+
+	realIpQueryLock sync.Mutex
 )
 
 type Gateway struct {
@@ -39,6 +44,8 @@ type Gateway struct {
 	ifce           *water.Interface
 	relayTCPServer *net.TCPListener
 	relayUDPServer *net.UDPConn
+	udpTunnelLock  sync.Mutex
+	udpTunnels     map[string]*net.UDPConn
 }
 
 func (g *Gateway) Serve() {
@@ -49,6 +56,7 @@ func (g *Gateway) Serve() {
 	}
 
 	g.nat = newNat()
+	g.udpTunnels = make(map[string]*net.UDPConn)
 
 	g.tunUp()
 	go g.relayTCPServe()
@@ -399,7 +407,6 @@ func (g *Gateway) handleTCPRelayConn(conn *net.TCPConn) {
 		uploadBytes, downloadBytes)
 }
 
-// TODO finish tunnel
 func (g *Gateway) handleUDPRelay(clientAddr *net.UDPAddr, packet []byte) {
 	defer func() {
 		if x := recover(); x != nil {
@@ -407,28 +414,150 @@ func (g *Gateway) handleUDPRelay(clientAddr *net.UDPAddr, packet []byte) {
 		}
 	}()
 
+	tunnel := g.getUDPTunnel(clientAddr)
+	if tunnel == nil {
+		return
+	}
+
+	tunnel.SetDeadline(time.Now().Add(natSessionLife * time.Second))
+	tunnel.Write(packet)
+}
+
+func (g *Gateway) getUDPTunnel(clientAddr *net.UDPAddr) *net.UDPConn {
+	g.udpTunnelLock.Lock()
+	defer g.udpTunnelLock.Unlock()
+
 	port := uint16(clientAddr.Port)
 	session := g.nat.getSession(port)
 	if session == nil {
-		return
+		return nil
 	}
 
-	key := internal.GetRedisIpKey(session.dstIp.String())
-	host, err := g.RedisClient.Get(key).Result()
+	tunnel := g.udpTunnels[clientAddr.String()]
+	if tunnel != nil {
+		return tunnel
+	}
+
+	realIp, err := g.getRealIp(session.dstIp.String())
+
 	if err != nil {
-		log.Warning("get redis domain fail %s", key)
-		return
+		log.Warning("get real ip fail %v:%d, error: %s", session.dstIp, session.dstPort, err)
+		return nil
 	}
 
-	target := fmt.Sprintf("%s:%d", host, session.dstPort)
-	conn, err := net.Dial("udp4", target)
+	log.Debug("get real ip: %s %s", session.dstIp.String(), realIp)
+
+	target := &net.UDPAddr{
+		IP:   net.ParseIP(realIp),
+		Port: int(session.dstPort),
+	}
+	tunnel, err = net.DialUDP("udp", nil, target)
 	if err != nil {
 		log.Warning("dial %s error %v", target, err)
-		return
+		return nil
+	}
+	log.Debug("udp create tunnel %s:%d -> %s:%d",
+		clientAddr.IP.String(), clientAddr.Port, target.IP.String(), target.Port)
+	g.udpTunnels[clientAddr.String()] = tunnel
+
+	go func() {
+		defer func() {
+			g.udpTunnelLock.Lock()
+			defer g.udpTunnelLock.Unlock()
+
+			log.Debug("udp destroy tunnel %s:%d -> %s:%d",
+				clientAddr.IP.String(), clientAddr.Port, target.IP.String(), target.Port)
+
+			delete(g.udpTunnels, clientAddr.String())
+			tunnel.Close()
+
+		}()
+		buf := make([]byte, mtu)
+		for {
+			n, err := tunnel.Read(buf)
+			if err != nil {
+
+				if e, ok := err.(*net.OpError); ok && e.Timeout() {
+					break
+				}
+
+				log.Error("read data failed, %v", err)
+				break
+			}
+
+			_, err = g.relayUDPServer.WriteToUDP(buf[:n], clientAddr)
+			if err != nil {
+				log.Error("response to client error, %v", err)
+				break
+			}
+		}
+	}()
+
+	return tunnel
+}
+
+func (g *Gateway) getRealIp(dstIp string) (string, error) {
+	realIpKey := internal.GetRedisRealIpKey(dstIp)
+	realIp, err := g.RedisClient.Get(realIpKey).Result()
+	if err != nil && realIp != "" {
+		return realIp, nil
+	}
+
+	realIpQueryLock.Lock()
+	defer realIpQueryLock.Unlock()
+
+	// retry
+	realIp, err = g.RedisClient.Get(realIpKey).Result()
+	if err != nil && realIp != "" {
+		return realIp, nil
+	}
+
+	ipKey := internal.GetRedisIpKey(dstIp)
+	host, err := g.RedisClient.Get(ipKey).Result()
+	if err != nil {
+		return "", err
+	}
+
+	conn, err := g.dialer.Dial("tcp", "8.8.8.8:53")
+	if err != nil {
+		return "", err
 	}
 	defer conn.Close()
 
-	conn.Write(packet)
+	m := new(dns.Msg)
+	m.SetQuestion(fmt.Sprintf("%s.", host), dns.TypeA)
+	m.RecursionDesired = true
+
+	co := &dns.Conn{Conn: conn}
+	defer co.Close()
+	co.WriteMsg(m)
+	r, err := co.ReadMsg()
+	if err != nil {
+		return "", err
+	}
+
+	if r.Rcode != dns.RcodeSuccess {
+		return "", errors.New(fmt.Sprintf("query %s dns fail, code %d", host, r.Rcode))
+	}
+
+	var ttl uint32
+	for _, a := range r.Answer {
+		if v, ok := a.(*dns.A); ok {
+			realIp = v.A.String()
+			ttl = v.Hdr.Ttl
+			break
+		}
+	}
+
+	if realIp == "" {
+		return "", errors.New(fmt.Sprintf("answer not found record type A, host: %s", host))
+	}
+
+	log.Debug("cache real ip query result, cache key: %s, mapping ip: %s, host: %s, realIp: %s",
+		realIpKey, dstIp, host, realIp)
+
+	g.RedisClient.SetNX(realIpKey, realIp, time.Duration(ttl)*time.Second)
+	return realIp, nil
 }
 
 func (g *Gateway) subscribe() {
