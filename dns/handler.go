@@ -28,6 +28,7 @@ func (h *handler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 		if x := recover(); x != nil {
 			log.Error("ServeDNS error", x)
 			log.Error("request:\n%v", r)
+			log.Error("request Extra :\n%v", r.Extra)
 			log.Error("stack %s", string(debug.Stack()))
 
 			dns.HandleFailed(w, r)
