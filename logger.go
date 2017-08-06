@@ -14,7 +14,7 @@ var (
 
 func init() {
 	format := logging.MustStringFormatter(
-		"%{time:2006-01-02 15:04:05.000} [%{level:.4s}] - %{message}",
+		`%{color}%{time:2006-01-02 15:04:05.000} [%{level:.4s}]%{color:reset} - %{message}`,
 	)
 
 	backend := logging.NewLogBackend(os.Stdout, "", 0)
