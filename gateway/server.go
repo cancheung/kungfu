@@ -380,7 +380,7 @@ func (g *Gateway) handleTCPRelayConn(conn *net.TCPConn) {
 	key := internal.GetRedisIpKey(session.dstIp.String())
 	host, err := g.RedisClient.Get(key).Result()
 	if err != nil {
-		log.Warning("get redis domain fail %s", key)
+		log.Warning("get redis domain fail %s, error: %v", key, err)
 		return
 	}
 
