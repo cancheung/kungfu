@@ -77,7 +77,7 @@ func isIPV4TypeAQuery(q *dns.Question) bool {
 	return q.Qclass == dns.ClassINET && q.Qtype == dns.TypeA
 }
 
-func (h *handler) queryDomainCache(r *dns.Msg) (*dns.Msg, error) {
+func (h *handler) queryDomainCache(r *dns.Msg) *dns.Msg {
 	qname := r.Question[0].Name
 	redis := h.server.RedisClient
 	qnameKey := internal.GetRedisDomainKey(qname)
@@ -85,14 +85,14 @@ func (h *handler) queryDomainCache(r *dns.Msg) (*dns.Msg, error) {
 	ttl, err := redis.TTL(qnameKey).Result()
 	if err != nil {
 		log.Error("redis check %s error %v", qname, err)
-		return nil, err
+		return nil
 	}
 
 	if ttl > 1 {
 		ip, err := redis.Get(qnameKey).Result()
 		if err != nil {
 			log.Error("redis get %s error %v", qname, err)
-			return nil, err
+			return nil
 		}
 
 		msg := new(dns.Msg)
@@ -100,32 +100,32 @@ func (h *handler) queryDomainCache(r *dns.Msg) (*dns.Msg, error) {
 		a := newARecord(qname, net.ParseIP(ip), uint32(ttl.Seconds()))
 		msg.Answer = append(msg.Answer, a)
 		log.Debug("internal resolve %s result: %s, ttl: %d", qname, ip, a.Hdr.Ttl)
-		return msg, nil
+		return msg
 	}
 
-	return nil, errors.New("cache not found")
+	return nil
 }
 
 func (h *handler) resolveInternal(r *dns.Msg) (*dns.Msg, error) {
-	msg, err := h.queryDomainCache(r)
-	if err != nil {
-		return nil, err
+	msg := h.queryDomainCache(r)
+	if msg != nil {
+		return msg, nil
 	}
 
 	h.lock.Lock()
 	defer h.lock.Unlock()
-
-	// recheck
-	msg, _ = h.queryDomainCache(r)
-	if msg != nil {
-		return msg, nil
-	}
 
 	qname := r.Question[0].Name
 	redis := h.server.RedisClient
 
 	if !h.isDomainInGfwlist(qname) {
 		return h.resolveUpstream(r)
+	}
+
+	// recheck
+	msg = h.queryDomainCache(r)
+	if msg != nil {
+		return msg, nil
 	}
 
 	qnameKey := internal.GetRedisDomainKey(qname)
@@ -199,9 +199,8 @@ func (h *handler) resolveUpstream(r *dns.Msg) (*dns.Msg, error) {
 	qtype := dns.Type(r.Question[0].Qtype).String()
 
 	var err error
-	var rtt time.Duration
 	for _, ns := range h.nameserver {
-		r, rtt, err = h.client.Exchange(r, ns)
+		r, _, err = h.client.Exchange(r, ns)
 		if err != nil {
 			log.Error("resolve upstream %s on %s qtype: %s error %v", qname, ns, qtype, err)
 			continue
@@ -212,7 +211,7 @@ func (h *handler) resolveUpstream(r *dns.Msg) (*dns.Msg, error) {
 			continue
 		}
 
-		log.Debug("resolve upstream %s on %s qtype: %s, code: %d, rtt: %d", qname, ns, qtype, r.Rcode, rtt)
+		log.Debug("resolve upstream %s on %s qtype: %s, code: %d", qname, ns, qtype, r.Rcode)
 		break
 	}
 
