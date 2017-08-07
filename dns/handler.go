@@ -1,7 +1,6 @@
 package dns
 
 import (
-	"errors"
 	"fmt"
 	"github.com/miekg/dns"
 	"github.com/yinheli/kungfu/internal"
@@ -12,7 +11,10 @@ import (
 	"time"
 )
 
+// DEFAULT_TTL default dns ttl (internal resolve result response)
 const DEFAULT_TTL = time.Duration(time.Hour * 3)
+
+// DNS_SERVER_NAME the dns server name for response PTR
 const DNS_SERVER_NAME = "kungfu-dns-server-helps-you-automatic-climb-the-wall."
 
 type handler struct {
@@ -151,7 +153,7 @@ func (h *handler) resolveInternal(r *dns.Msg) (*dns.Msg, error) {
 	}
 
 	if !success {
-		return nil, errors.New(fmt.Sprintf("update ip cache fail: duplicate key: %s, %s", qnameIpKey, qname))
+		return nil, fmt.Errorf("update ip cache fail: duplicate key: %s, %s", qnameIpKey, qname)
 	}
 
 	success, err = redis.SetNX(qnameKey, ipStr, DEFAULT_TTL).Result()
@@ -162,7 +164,7 @@ func (h *handler) resolveInternal(r *dns.Msg) (*dns.Msg, error) {
 
 	if !success {
 		redis.Del(qnameIpKey)
-		return nil, errors.New(fmt.Sprintf("update domain cache fail: duplicate key: %s, %s", qnameKey, ipStr))
+		return nil, fmt.Errorf("update domain cache fail: duplicate key: %s, %s", qnameKey, ipStr)
 	}
 
 	msg = new(dns.Msg)

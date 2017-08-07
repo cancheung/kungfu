@@ -1,7 +1,6 @@
 package gateway
 
 import (
-	"errors"
 	"fmt"
 	"github.com/go-redis/redis"
 	"github.com/miekg/dns"
@@ -22,8 +21,8 @@ import (
 )
 
 const (
-	tun_name = "tun-kungfu-01"
-	mtu      = 1500
+	tunName = "tun-kungfu-01"
+	mtu     = 1500
 )
 
 var (
@@ -32,6 +31,7 @@ var (
 	realIpQueryLock sync.Mutex
 )
 
+// Gateway is the gateway server
 type Gateway struct {
 	RedisClient *redis.Client
 
@@ -48,6 +48,7 @@ type Gateway struct {
 	udpTunnels     map[string]*net.UDPConn
 }
 
+// Serve the gateway
 func (g *Gateway) Serve() {
 
 	err := g.loadConfig()
@@ -125,7 +126,7 @@ func (g *Gateway) tunUp() {
 	config := water.Config{
 		DeviceType: water.TUN,
 	}
-	config.Name = tun_name
+	config.Name = tunName
 
 	ifce, err := water.New(config)
 	if err != nil {
@@ -289,9 +290,9 @@ func (g *Gateway) handleICMP(p *ipv4Packet) {
 	icmps := icmpPacket(p.payload())
 	srcIp, dstIp := p.sourceIP(), p.destinationIP()
 
-	if icmps.packetType() == icmp_request && icmps.code() == 0 {
+	if icmps.packetType() == icmpTypeRequest && icmps.code() == 0 {
 		log.Debug("icmp request %v -> %v, icmp payload size: %d", srcIp, dstIp, icmps.dataLen())
-		icmps.setPacketType(icmp_echo)
+		icmps.setPacketType(icmpTypeEcho)
 
 		p.setSourceIP(dstIp)
 		p.setDestinationIP(srcIp)
@@ -537,7 +538,7 @@ func (g *Gateway) getRealIp(dstIp string) (string, error) {
 	}
 
 	if r.Rcode != dns.RcodeSuccess {
-		return "", errors.New(fmt.Sprintf("query %s dns fail, code %d", host, r.Rcode))
+		return "", fmt.Errorf("query %s dns fail, code %d", host, r.Rcode)
 	}
 
 	var ttl uint32
@@ -550,7 +551,7 @@ func (g *Gateway) getRealIp(dstIp string) (string, error) {
 	}
 
 	if realIp == "" {
-		return "", errors.New(fmt.Sprintf("answer not found record type A, host: %s", host))
+		return "", fmt.Errorf("answer not found record type A, host: %s", host)
 	}
 
 	log.Debug("cache real ip query result, cache key: %s, mapping ip: %s, host: %s, realIp: %s",

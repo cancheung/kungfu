@@ -25,7 +25,7 @@ func main() {
 	u := flag.Usage
 	flag.Usage = func() {
 		fmt.Printf("\n%s gateway %v\n", kungfu.Name, ver)
-		fmt.Println("  maintained by yinheli<hi@yinheli.com>\n")
+		fmt.Print("  maintained by yinheli<hi@yinheli.com>\n")
 		u()
 	}
 

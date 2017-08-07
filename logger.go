@@ -23,10 +23,12 @@ func init() {
 	log.SetBackend(levelBackend)
 }
 
+// GetLog is log util
 func GetLog() *logging.Logger {
 	return log
 }
 
+// SetLogLevelDebug is for setting global log level
 func SetLogLevelDebug() {
 	levelBackend.SetLevel(logging.DEBUG, module)
 }

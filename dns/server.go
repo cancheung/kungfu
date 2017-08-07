@@ -2,21 +2,23 @@ package dns
 
 import (
 	"fmt"
-	"github.com/go-redis/redis"
-	"github.com/miekg/dns"
-	"github.com/yinheli/kungfu"
-	"github.com/yinheli/kungfu/internal"
 	"net"
 	"os"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/go-redis/redis"
+	"github.com/miekg/dns"
+	"github.com/yinheli/kungfu"
+	"github.com/yinheli/kungfu/internal"
 )
 
 var (
 	log = kungfu.GetLog()
 )
 
+// Server is the dns server
 type Server struct {
 	RedisClient *redis.Client
 
@@ -27,6 +29,7 @@ type Server struct {
 	handler       *handler
 }
 
+// Start the dns server
 func (server *Server) Start() {
 
 	network, err := server.RedisClient.Get(internal.GetRedisNetworkKey()).Result()

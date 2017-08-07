@@ -61,7 +61,7 @@ func BenchmarkNat(b *testing.B) {
 
 	minIp, maxIp, _ := internal.ParseNetwork("10.0.0.1/16")
 
-	var ipIdx uint32 = 0
+	var ipIdx uint32
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {

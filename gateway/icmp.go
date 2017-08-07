@@ -5,8 +5,8 @@ import "encoding/binary"
 type icmpPacket []byte
 
 const (
-	icmp_echo    = 0x0
-	icmp_request = 0x8
+	icmpTypeEcho    = 0x0
+	icmpTypeRequest = 0x8
 )
 
 func (p *icmpPacket) packetType() byte {
