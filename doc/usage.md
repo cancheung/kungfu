@@ -9,7 +9,7 @@ kungfu 使用 go 语言开发，只做了 linux 的兼容。
 
 优点：
 
-内网可实现无感知全自动 `fq`。
+内网可实现无感知全自动 `fq`。
 DSN server, gateway server， socks5 server 都能做水平扩容，理论上可以支持很大的网络。比较适合有需要的企业内部使用。
 
 缺点：
