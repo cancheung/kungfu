@@ -59,11 +59,18 @@ func (h *handler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 		log.Error("process resolve error: %v", err)
 	}
 
+	// log
+	if msg != nil && msg.Rcode != dns.RcodeSuccess {
+		log.Debug("resolve remote addr: %s, qname: %s rcode: %d",
+			w.RemoteAddr().String(), question.Name, msg.Rcode)
+	}
+
 	if err != nil || msg == nil {
 		dns.HandleFailed(w, r)
 	} else {
 		w.WriteMsg(msg)
 	}
+
 }
 
 func isIPV4TypeAQuery(q *dns.Question) bool {
@@ -175,7 +182,6 @@ func (h *handler) resolveUpstream(r *dns.Msg) (*dns.Msg, error) {
 	var err error
 	var rtt time.Duration
 	for _, ns := range h.nameserver {
-		log.Debug("resolve upstream %s on %s", qname, ns)
 		r, rtt, err = h.client.Exchange(r, ns)
 		if err != nil {
 			log.Error("resolve upstream %s on %s qtype: %s error %v", qname, ns, qtype, err)
@@ -224,7 +230,6 @@ func (h *handler) isDomainInGfwlist(domain string) bool {
 
 func (h *handler) isSingleDomainInGfwList(domain string) bool {
 	key := internal.GetRedisProxyDomainSetKey()
-	log.Debug("is domain in gfwlist set %s, domain %s", key, domain)
 	v, err := h.server.RedisClient.SIsMember(key, domain).Result()
 	if err != nil {
 		log.Warning("check single domain in proxy set error, domain %s, %v", domain, err)
