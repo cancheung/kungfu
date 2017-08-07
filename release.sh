@@ -2,6 +2,7 @@
 set -e
 
 CURRENT_DIR=$(cd $(dirname $0); pwd)
+cd "$CURRENT_DIR"
 
 GOPATH=$(cd ../../../../; pwd)
 if [[ ! -d "$GOPATH" ]]; then
