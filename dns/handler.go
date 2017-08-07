@@ -77,22 +77,21 @@ func isIPV4TypeAQuery(q *dns.Question) bool {
 	return q.Qclass == dns.ClassINET && q.Qtype == dns.TypeA
 }
 
-func (h *handler) resolveInternal(r *dns.Msg) (*dns.Msg, error) {
+func (h *handler) queryDomainCache(r *dns.Msg) (*dns.Msg, error) {
 	qname := r.Question[0].Name
 	redis := h.server.RedisClient
-
 	qnameKey := internal.GetRedisDomainKey(qname)
 
 	ttl, err := redis.TTL(qnameKey).Result()
 	if err != nil {
-		log.Error("redis check domain %s error %v", qname, err)
+		log.Error("redis check %s error %v", qname, err)
 		return nil, err
 	}
 
 	if ttl > 1 {
 		ip, err := redis.Get(qnameKey).Result()
 		if err != nil {
-			log.Error("redis get %s value error %v", qname, err)
+			log.Error("redis get %s error %v", qname, err)
 			return nil, err
 		}
 
@@ -104,12 +103,32 @@ func (h *handler) resolveInternal(r *dns.Msg) (*dns.Msg, error) {
 		return msg, nil
 	}
 
-	if !h.isDomainInGfwlist(qname) {
-		return h.resolveUpstream(r)
+	return nil, errors.New("cache not found")
+}
+
+func (h *handler) resolveInternal(r *dns.Msg) (*dns.Msg, error) {
+	msg, err := h.queryDomainCache(r)
+	if err != nil {
+		return nil, err
 	}
 
 	h.lock.Lock()
 	defer h.lock.Unlock()
+
+	// recheck
+	msg, _ = h.queryDomainCache(r)
+	if msg != nil {
+		return msg, nil
+	}
+
+	qname := r.Question[0].Name
+	redis := h.server.RedisClient
+
+	if !h.isDomainInGfwlist(qname) {
+		return h.resolveUpstream(r)
+	}
+
+	qnameKey := internal.GetRedisDomainKey(qname)
 
 	currentIpKey := internal.GetRedisKey("current-ip")
 
@@ -146,7 +165,7 @@ func (h *handler) resolveInternal(r *dns.Msg) (*dns.Msg, error) {
 		return nil, errors.New(fmt.Sprintf("update domain cache fail: duplicate key: %s, %s", qnameKey, ipStr))
 	}
 
-	msg := new(dns.Msg)
+	msg = new(dns.Msg)
 	msg.SetReply(r)
 	a := newARecord(qname, ip, uint32(DEFAULT_TTL.Seconds()))
 	msg.Answer = append(msg.Answer, a)
