@@ -98,3 +98,10 @@ ping google.com
 ```
 
 如果服务器返回 10.85.x.x 这样的 ip，则表示工作正常，kungfu-dns-server, kungfu-gateway-server 也会输出相关日志。
+
+## 其他
+
+如果这个工具对你有帮助，微信扫一扫，请我喝咖啡~
+
+![donate](../assets/donate/donate-wx.png)
+
