@@ -1,7 +1,6 @@
 package internal
 
 import (
-	"errors"
 	"fmt"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
@@ -62,7 +61,7 @@ func ParseNetwork(network string) (minIp uint32, maxIp uint32, err error) {
 	}
 
 	if ip = ip.To4(); ip == nil || ip[3] == 0 {
-		err = errors.New(fmt.Sprintf("invalid network %s", network))
+		err = fmt.Errorf("invalid network %s", network)
 		return
 	}
 
